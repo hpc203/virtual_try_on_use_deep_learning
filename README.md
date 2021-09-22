@@ -2,8 +2,9 @@
 使用深度学习算法实现虚拟试衣，结合了人体姿态估计、人体分割、几何匹配和GAN，四种模型。仅仅只依赖opencv库就能运行
 
 这套程序实现起来挺复杂的，因为它里面包含了4种深度学习模型，而且有一个自定义层CorrelationLayer，需要自己编程实现它。
-然而我想使用onnxruntime作为推理引擎时，onnxruntime不支持自定义层的，这算是opencv的一个优势的
-主程序文件是 main.py，模型文件从百度云盘下载，
+然而我想使用onnxruntime作为推理引擎时，onnxruntime不支持自定义层的，这算是opencv的一个优势的。
+
+本套程序的主程序文件是 main.py，模型文件从百度云盘下载，
 链接：https://pan.baidu.com/s/13Eic0aiMtCGY7iigjg71DQ 
 提取码：xsl5
 
