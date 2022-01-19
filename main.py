@@ -6,31 +6,41 @@ from numpy import linalg
 from common import findFile
 from human_parsing import parse_human
 
-backends = (cv.dnn.DNN_BACKEND_DEFAULT, cv.dnn.DNN_BACKEND_HALIDE, cv.dnn.DNN_BACKEND_INFERENCE_ENGINE, cv.dnn.DNN_BACKEND_OPENCV)
-targets = (cv.dnn.DNN_TARGET_CPU, cv.dnn.DNN_TARGET_OPENCL, cv.dnn.DNN_TARGET_OPENCL_FP16, cv.dnn.DNN_TARGET_MYRIAD, cv.dnn.DNN_TARGET_HDDL)
+backends = (
+    cv.dnn.DNN_BACKEND_DEFAULT, cv.dnn.DNN_BACKEND_HALIDE, cv.dnn.DNN_BACKEND_INFERENCE_ENGINE,
+    cv.dnn.DNN_BACKEND_OPENCV)
+targets = (cv.dnn.DNN_TARGET_CPU, cv.dnn.DNN_TARGET_OPENCL, cv.dnn.DNN_TARGET_OPENCL_FP16, cv.dnn.DNN_TARGET_MYRIAD,
+           cv.dnn.DNN_TARGET_HDDL)
 
-parser = argparse.ArgumentParser(description='Use this script to run virtial try-on using CP-VTON', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--input_image',  type=str, default='test_img/000074_0.jpg', help='Path to image with person.')
+parser = argparse.ArgumentParser(description='Use this script to run virtial try-on using CP-VTON',
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--input_image', type=str, default='test_img/000074_0.jpg', help='Path to image with person.')
 parser.add_argument('--input_cloth', type=str, default='test_color/000010_1.jpg', help='Path to target cloth image')
-parser.add_argument('--gmm_model', '-gmm', default='cp_vton_gmm.onnx', help='Path to Geometric Matching Module .onnx model.')
-parser.add_argument('--tom_model', '-tom', default='cp_vton_tom.onnx', help='Path to Try-On Module .onnx model.')
-parser.add_argument('--segmentation_model', default='lip_jppnet_384.pb', help='Path to cloth segmentation .pb model.')
-parser.add_argument('--openpose_proto', default='openpose_pose_coco.prototxt', help='Path to OpenPose .prototxt model was trained on COCO dataset.')
-parser.add_argument('--openpose_model', default='openpose_pose_coco.caffemodel', help='Path to OpenPose .caffemodel model was trained on COCO dataset.')
+# TODO 修改模型路径
+parser.add_argument('--gmm_model', '-gmm', default='models/cp_vton_gmm.onnx',
+                    help='Path to Geometric Matching Module .onnx model.')
+parser.add_argument('--tom_model', '-tom', default='models/cp_vton_tom.onnx', help='Path to Try-On Module .onnx model.')
+parser.add_argument('--segmentation_model', default='models/lip_jppnet_384.pb', help='Path to cloth segmentation .pb model.')
+parser.add_argument('--openpose_proto', default='models/openpose_pose_coco.prototxt',
+                    help='Path to OpenPose .prototxt model was trained on COCO dataset.')
+parser.add_argument('--openpose_model', default='models/openpose_pose_coco.caffemodel',
+                    help='Path to OpenPose .caffemodel model was trained on COCO dataset.')
+
 parser.add_argument('--backend', choices=backends, default=cv.dnn.DNN_BACKEND_DEFAULT, type=int,
                     help="Choose one of computation backends: "
-                            "%d: automatically (by default), "
-                            "%d: Halide language (http://halide-lang.org/), "
-                            "%d: Intel's Deep Learning Inference Engine (https://software.intel.com/openvino-toolkit), "
-                            "%d: OpenCV implementation" % backends)
+                         "%d: automatically (by default), "
+                         "%d: Halide language (http://halide-lang.org/), "
+                         "%d: Intel's Deep Learning Inference Engine (https://software.intel.com/openvino-toolkit), "
+                         "%d: OpenCV implementation" % backends)
 parser.add_argument('--target', choices=targets, default=cv.dnn.DNN_TARGET_CPU, type=int,
                     help='Choose one of target computation devices: '
-                            '%d: CPU target (by default), '
-                            '%d: OpenCL, '
-                            '%d: OpenCL fp16 (half-float precision), '
-                            '%d: NCS2 VPU, '
-                            '%d: HDDL VPU' % targets)
+                         '%d: CPU target (by default), '
+                         '%d: OpenCL, '
+                         '%d: OpenCL fp16 (half-float precision), '
+                         '%d: NCS2 VPU, '
+                         '%d: HDDL VPU' % targets)
 args, _ = parser.parse_known_args()
+
 
 def get_pose_map(image, proto_path, model_path, backend, target, height=256, width=192):
     radius = 5
@@ -58,17 +68,19 @@ def get_pose_map(image, proto_path, model_path, backend, target, height=256, wid
     pose_map = pose_map.transpose(2, 0, 1)
     return pose_map
 
+
 class BilinearFilter(object):
     """
     PIL bilinear resize implementation
     image = image.resize((image_width // 16, image_height // 16), Image.BILINEAR)
     """
+
     def _precompute_coeffs(self, inSize, outSize):
         filterscale = max(1.0, inSize / outSize)
         ksize = int(np.ceil(filterscale)) * 2 + 1
 
-        kk = np.zeros(shape=(outSize * ksize, ), dtype=np.float32)
-        bounds = np.empty(shape=(outSize * 2, ), dtype=np.int32)
+        kk = np.zeros(shape=(outSize * ksize,), dtype=np.float32)
+        bounds = np.empty(shape=(outSize * 2,), dtype=np.int32)
 
         centers = (np.arange(outSize) + 0.5) * filterscale + 0.5
         bounds[::2] = np.where(centers - filterscale < 0, 0, centers - filterscale)
@@ -80,7 +92,7 @@ class BilinearFilter(object):
             point = points[xx]
             bilinear = np.where(point < 1.0, 1.0 - abs(point), 0.0)
             ww = np.sum(bilinear)
-            kk[xx * ksize : xx * ksize + bilinear.size] = np.where(ww == 0.0, bilinear, bilinear / ww)
+            kk[xx * ksize: xx * ksize + bilinear.size] = np.where(ww == 0.0, bilinear, bilinear / ww)
         return bounds, kk, ksize
 
     def _resample_horizontal(self, out, img, ksize, bounds, kk):
@@ -88,26 +100,27 @@ class BilinearFilter(object):
             for xx in range(0, out.shape[1]):
                 xmin = bounds[xx * 2 + 0]
                 xmax = bounds[xx * 2 + 1]
-                k = kk[xx * ksize : xx * ksize + xmax]
-                out[yy, xx] = np.round(np.sum(img[yy, xmin : xmin + xmax] * k))
+                k = kk[xx * ksize: xx * ksize + xmax]
+                out[yy, xx] = np.round(np.sum(img[yy, xmin: xmin + xmax] * k))
 
     def _resample_vertical(self, out, img, ksize, bounds, kk):
         for yy in range(0, out.shape[0]):
             ymin = bounds[yy * 2 + 0]
             ymax = bounds[yy * 2 + 1]
             k = kk[yy * ksize: yy * ksize + ymax]
-            out[yy] = np.round(np.sum(img[ymin : ymin + ymax, 0:out.shape[1]] * k[:, np.newaxis], axis=0))
+            out[yy] = np.round(np.sum(img[ymin: ymin + ymax, 0:out.shape[1]] * k[:, np.newaxis], axis=0))
 
     def imaging_resample(self, img, xsize, ysize):
         height, width = img.shape[0:2]
         bounds_horiz, kk_horiz, ksize_horiz = self._precompute_coeffs(width, xsize)
-        bounds_vert, kk_vert, ksize_vert    = self._precompute_coeffs(height, ysize)
+        bounds_vert, kk_vert, ksize_vert = self._precompute_coeffs(height, ysize)
 
         out_hor = np.empty((img.shape[0], xsize), dtype=np.uint8)
         self._resample_horizontal(out_hor, img, ksize_horiz, bounds_horiz, kk_horiz)
         out = np.empty((ysize, xsize), dtype=np.uint8)
         self._resample_vertical(out, out_hor, ksize_vert, bounds_vert, kk_vert)
         return out
+
 
 class CpVton(object):
     def __init__(self, gmm_model, tom_model, backend, target):
@@ -119,28 +132,29 @@ class CpVton(object):
         self.tom_net.setPreferableBackend(backend)
         self.tom_net.setPreferableTarget(target)
         self.downsample = BilinearFilter()
+
     def prepare_agnostic(self, segm_image, input_image, pose_map, height=256, width=192):
         palette = {
-            'Background'   : (0, 0, 0),
-            'Hat'          : (128, 0, 0),
-            'Hair'         : (255, 0, 0),
-            'Glove'        : (0, 85, 0),
-            'Sunglasses'   : (170, 0, 51),
-            'UpperClothes' : (255, 85, 0),
-            'Dress'        : (0, 0, 85),
-            'Coat'         : (0, 119, 221),
-            'Socks'        : (85, 85, 0),
-            'Pants'        : (0, 85, 85),
-            'Jumpsuits'    : (85, 51, 0),
-            'Scarf'        : (52, 86, 128),
-            'Skirt'        : (0, 128, 0),
-            'Face'         : (0, 0, 255),
-            'Left-arm'     : (51, 170, 221),
-            'Right-arm'    : (0, 255, 255),
-            'Left-leg'     : (85, 255, 170),
-            'Right-leg'    : (170, 255, 85),
-            'Left-shoe'    : (255, 255, 0),
-            'Right-shoe'   : (255, 170, 0)
+            'Background': (0, 0, 0),
+            'Hat': (128, 0, 0),
+            'Hair': (255, 0, 0),
+            'Glove': (0, 85, 0),
+            'Sunglasses': (170, 0, 51),
+            'UpperClothes': (255, 85, 0),
+            'Dress': (0, 0, 85),
+            'Coat': (0, 119, 221),
+            'Socks': (85, 85, 0),
+            'Pants': (0, 85, 85),
+            'Jumpsuits': (85, 51, 0),
+            'Scarf': (52, 86, 128),
+            'Skirt': (0, 128, 0),
+            'Face': (0, 0, 255),
+            'Left-arm': (51, 170, 221),
+            'Right-arm': (0, 255, 255),
+            'Left-leg': (85, 255, 170),
+            'Right-leg': (170, 255, 85),
+            'Left-shoe': (255, 255, 0),
+            'Right-shoe': (255, 170, 0)
         }
         color2label = {val: key for key, val in palette.items()}
         head_labels = ['Hat', 'Hair', 'Sunglasses', 'Face', 'Pants', 'Skirt']
@@ -157,7 +171,8 @@ class CpVton(object):
                     if color2label[pixel] != 'Background':
                         pose_shape[r, c] = 255
 
-        input_image = cv.dnn.blobFromImage(input_image, 1.0 / 127.5, (width, height), mean=(127.5, 127.5, 127.5), swapRB=True)
+        input_image = cv.dnn.blobFromImage(input_image, 1.0 / 127.5, (width, height), mean=(127.5, 127.5, 127.5),
+                                           swapRB=True)
         input_image = input_image.squeeze(0)
         img_head = input_image * phead - (1 - phead)
         down = self.downsample.imaging_resample(pose_shape, width // 16, height // 16)
@@ -223,8 +238,8 @@ class CpVton(object):
         N = grid_size ** 2
         P_Y, P_X = np.meshgrid(axis_coords, axis_coords)
 
-        P_X = np.reshape(P_X,(-1, 1))
-        P_Y = np.reshape(P_Y,(-1, 1))
+        P_X = np.reshape(P_X, (-1, 1))
+        P_Y = np.reshape(P_Y, (-1, 1))
 
         P_X = np.expand_dims(np.expand_dims(np.expand_dims(P_X, axis=2), axis=3), axis=4).transpose(4, 1, 2, 3, 0)
         P_Y = np.expand_dims(np.expand_dims(np.expand_dims(P_Y, axis=2), axis=3), axis=4).transpose(4, 1, 2, 3, 0)
@@ -263,8 +278,8 @@ class CpVton(object):
         P_X = self._expand_torch(P_X, (1, points_h, points_w, 1, N))
         P_Y = self._expand_torch(P_Y, (1, points_h, points_w, 1, N))
 
-        W_X = self._expand_torch(Li[:,:N,:N], (batch_size, N, N)) @ Q_X
-        W_Y = self._expand_torch(Li[:,:N,:N], (batch_size, N, N)) @ Q_Y
+        W_X = self._expand_torch(Li[:, :N, :N], (batch_size, N, N)) @ Q_X
+        W_Y = self._expand_torch(Li[:, :N, :N], (batch_size, N, N)) @ Q_Y
 
         W_X = np.expand_dims(np.expand_dims(W_X, axis=3), axis=4).transpose(0, 4, 2, 3, 1)
         W_X = np.repeat(W_X, points_h, axis=1)
@@ -302,22 +317,22 @@ class CpVton(object):
         dist_squared[dist_squared == 0] = 1
         U = np.multiply(dist_squared, np.log(dist_squared))
 
-        points_X_batch = np.expand_dims(points[:,:,:,0], axis=3)
-        points_Y_batch = np.expand_dims(points[:,:,:,1], axis=3)
+        points_X_batch = np.expand_dims(points[:, :, :, 0], axis=3)
+        points_Y_batch = np.expand_dims(points[:, :, :, 1], axis=3)
 
         if points_b == 1:
-            points_X_batch = self._expand_torch(points_X_batch, (batch_size, ) + points_X_batch.shape[1:])
-            points_Y_batch = self._expand_torch(points_Y_batch, (batch_size, ) + points_Y_batch.shape[1:])
+            points_X_batch = self._expand_torch(points_X_batch, (batch_size,) + points_X_batch.shape[1:])
+            points_Y_batch = self._expand_torch(points_Y_batch, (batch_size,) + points_Y_batch.shape[1:])
 
-        points_X_prime = A_X[:,:,:,:,0]+ \
-                        np.multiply(A_X[:,:,:,:,1], points_X_batch) + \
-                        np.multiply(A_X[:,:,:,:,2], points_Y_batch) + \
-                        np.sum(np.multiply(W_X, self._expand_torch(U, W_X.shape)), 4)
+        points_X_prime = A_X[:, :, :, :, 0] + \
+                         np.multiply(A_X[:, :, :, :, 1], points_X_batch) + \
+                         np.multiply(A_X[:, :, :, :, 2], points_Y_batch) + \
+                         np.sum(np.multiply(W_X, self._expand_torch(U, W_X.shape)), 4)
 
-        points_Y_prime = A_Y[:,:,:,:,0]+ \
-                        np.multiply(A_Y[:,:,:,:,1], points_X_batch) + \
-                        np.multiply(A_Y[:,:,:,:,2], points_Y_batch) + \
-                        np.sum(np.multiply(W_Y, self._expand_torch(U, W_Y.shape)), 4)
+        points_Y_prime = A_Y[:, :, :, :, 0] + \
+                         np.multiply(A_Y[:, :, :, :, 1], points_X_batch) + \
+                         np.multiply(A_Y[:, :, :, :, 2], points_Y_batch) + \
+                         np.sum(np.multiply(W_Y, self._expand_torch(U, W_Y.shape)), 4)
 
         return np.concatenate((points_X_prime, points_Y_prime), 3)
 
@@ -327,7 +342,7 @@ class CpVton(object):
         return warped_grid
 
     def _bilinear_sampler(self, img, grid):
-        x, y = grid[:,:,:,0], grid[:,:,:,1]
+        x, y = grid[:, :, :, 0], grid[:, :, :, 1]
 
         H = img.shape[2]
         W = img.shape[3]
@@ -346,11 +361,11 @@ class CpVton(object):
 
         # calculate deltas
         wa = (x1 - x) * (y1 - y)
-        wb = (x1 - x) * (y  - y0)
+        wb = (x1 - x) * (y - y0)
         wc = (x - x0) * (y1 - y)
-        wd = (x - x0) * (y  - y0)
+        wd = (x - x0) * (y - y0)
 
-        # clip to range [0, H-1/W-1] to not violate img boundaries
+        # clip to range [0, H-1/W-1] to not violate output_img boundaries
         x0 = np.clip(x0, 0, max_x)
         x1 = np.clip(x1, 0, max_x)
         y0 = np.clip(y0, 0, max_y)
@@ -369,8 +384,9 @@ class CpVton(object):
         wd = np.expand_dims(wd, axis=0)
 
         # compute output
-        out = wa*Ia + wb*Ib + wc*Ic + wd*Id
+        out = wa * Ia + wb * Ib + wc * Ic + wd * Id
         return out
+
 
 class CorrelationLayer(object):
     def __init__(self, params, blobs):
@@ -395,6 +411,7 @@ class CorrelationLayer(object):
         correlation_tensor = feature_mul.transpose((0, 3, 1, 2))
         correlation_tensor = np.ascontiguousarray(correlation_tensor)
         return [correlation_tensor]
+
 
 if __name__ == "__main__":
     if not os.path.isfile(args.gmm_model):
