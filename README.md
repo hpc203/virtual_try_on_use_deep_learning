@@ -27,5 +27,33 @@ opencv-python==4.5.1.48
 wincertstore==0.2
 ```
 
+### 执行过程
+1. 克隆本项目到本地
+```shell
+git clone https://github.com/GerogeLiu/virtual_try_on_use_deep_learning.git
+```
+2. 项目根目录创建models目录，在百度云盘下载模型文件并将文件放置到models目录
+3. anaconda下创建虚拟环境
+```shell
+# 创建虚拟环境
+conda create -n <virtualName> python==3.8.0
+```
+4. 安装必要的第三方库
+```shell
+# 激活虚拟环境
+conda activate <virtualName>
+
+# 安装opencv
+pip install opencv-python==4.5.1.48 -i https://pypi.douban.com/simple
+```
+5. 执行main.py
+```shell
+# 切换到本项目目录
+cd you/path/to/virtal_try_on_use_deep_learning
+
+# 执行
+python main.py
+```
+
 ### 运行效果图
 ![输出效果](output_img/output.PNG)
